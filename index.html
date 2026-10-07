@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 草稿轉漫畫｜免費 ZeroGPU 版</title>
+  <style>
+    :root {
+      --bg:#f3f4f6; --card:#fff; --text:#1f2937; --muted:#6b7280;
+      --line:#d1d5db; --blue:#2563eb; --blue2:#1d4ed8;
+      --red:#b91c1c; --green:#15803d; --yellow:#854d0e;
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; min-height:100vh; padding:20px;
+      font-family:"Segoe UI","Noto Sans TC","Microsoft JhengHei",sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at 5% 0%,#dbeafe 0,transparent 30%),
+        radial-gradient(circle at 100% 5%,#f3e8ff 0,transparent 28%),
+        var(--bg);
+    }
+    .app {
+      width:min(1120px,100%); margin:auto; background:var(--card);
+      border:1px solid #e5e7eb; border-radius:20px; overflow:hidden;
+      box-shadow:0 18px 55px rgba(15,23,42,.11);
+    }
+    header {
+      padding:24px 26px 20px;
+      background:linear-gradient(135deg,#fff,#f8fbff);
+      border-bottom:1px solid #e5e7eb;
+    }
+    h1 { margin:0; font-size:clamp(25px,4vw,35px); }
+    .subtitle { margin:8px 0 0; line-height:1.6; color:var(--muted); }
+    .chip {
+      display:inline-block; margin-top:12px; padding:7px 11px;
+      border-radius:999px; background:#ecfdf5; color:#166534;
+      font-size:13px; font-weight:800;
+    }
+    main {
+      padding:22px; display:grid; grid-template-columns:1fr 1fr; gap:24px;
+    }
+    @media (max-width:860px) {
+      body { padding:10px; }
+      main { grid-template-columns:1fr; padding:15px; }
+      header { padding:20px 17px; }
+    }
+    h2 { font-size:16px; margin:0 0 10px; }
+    .hint { font-size:13px; color:var(--muted); line-height:1.55; margin:0 0 10px; }
+    .canvas-wrap {
+      width:100%; aspect-ratio:1; background:#fff; overflow:hidden;
+      border:2px dashed #9ca3af; border-radius:14px;
+    }
+    canvas { display:block; width:100%; height:100%; cursor:crosshair; touch-action:none; }
+    .toolbar,.row { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+    .toolbar { justify-content:space-between; margin-top:11px; }
+    button,input,textarea,select { font:inherit; }
+    button { border:0; cursor:pointer; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .btn {
+      padding:9px 13px; border-radius:9px; font-weight:750;
+      background:#f3f4f6; color:#374151;
+    }
+    .btn:hover:not(:disabled) { background:#e5e7eb; }
+    .btn-red { background:#fee2e2; color:var(--red); }
+    .btn-red:hover:not(:disabled) { background:#fecaca; }
+    .field { margin-bottom:13px; }
+    label { display:block; margin-bottom:6px; font-size:13px; font-weight:800; }
+    input[type=password], textarea {
+      width:100%; padding:10px 11px; border:1px solid var(--line);
+      border-radius:10px; outline:none; background:white; color:var(--text);
+    }
+    textarea { min-height:105px; resize:vertical; line-height:1.5; }
+    input:focus,textarea:focus { border-color:#60a5fa; box-shadow:0 0 0 3px #dbeafe; }
+    input[type=range] { accent-color:var(--blue); }
+    .range-row {
+      display:grid; grid-template-columns:1fr 55px; gap:10px; align-items:center;
+    }
+    .range-value {
+      text-align:center; background:#f3f4f6; border-radius:8px;
+      padding:5px; font-weight:800; font-size:13px;
+    }
+    .notice {
+      padding:10px 11px; margin-bottom:13px; border-radius:10px;
+      border:1px solid #fde68a; background:#fffbeb; color:var(--yellow);
+      font-size:12.5px; line-height:1.55;
+    }
+    .free-note {
+      padding:10px 11px; margin-bottom:13px; border-radius:10px;
+      border:1px solid #bbf7d0; background:#f0fdf4; color:#166534;
+      font-size:12.5px; line-height:1.55;
+    }
+    .generate {
+      width:100%; min-height:49px; border-radius:11px;
+      background:var(--blue); color:white; font-weight:850; font-size:16px;
+    }
+    .generate:hover:not(:disabled) { background:var(--blue2); }
+    .spinner {
+      display:none; width:17px; height:17px; margin-left:7px; vertical-align:-3px;
+      border:3px solid rgba(255,255,255,.35); border-top-color:white;
+      border-radius:50%; animation:spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .status {
+      min-height:44px; margin-top:11px; padding:10px 11px;
+      border:1px solid #e5e7eb; border-radius:10px; background:#f9fafb;
+      color:#4b5563; font-size:13px; line-height:1.5;
+      white-space:pre-wrap; overflow-wrap:anywhere;
+    }
+    .status.error { color:var(--red); background:#fef2f2; border-color:#fecaca; }
+    .status.ok { color:var(--green); background:#f0fdf4; border-color:#bbf7d0; }
+    .result { margin-top:16px; padding-top:15px; border-top:1px solid #e5e7eb; }
+    .result-frame {
+      min-height:320px; display:grid; place-items:center; overflow:hidden;
+      border:1px solid #e5e7eb; border-radius:12px; background:#fafafa;
+    }
+    #resultImage { display:none; width:100%; max-height:720px; object-fit:contain; background:white; }
+    #placeholder { padding:24px; text-align:center; color:var(--muted); line-height:1.5; }
+    .links { display:flex; gap:8px; margin-top:9px; flex-wrap:wrap; }
+    .linkbtn {
+      display:none; text-decoration:none; padding:9px 12px; border-radius:9px;
+      color:#374151; background:#f3f4f6; font-size:13px; font-weight:750;
+    }
+    footer {
+      padding:13px 22px 17px; border-top:1px solid #e5e7eb;
+      color:var(--muted); font-size:12px; line-height:1.55;
+    }
+    a { color:#2563eb; }
+    code { background:#f3f4f6; border-radius:5px; padding:1px 4px; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🎨 AI 草稿轉漫畫</h1>
+    <p class="subtitle">
+      單一 HTML・GitHub Pages 可用・免費 Hugging Face ZeroGPU。
+      草稿不是裝飾：後端使用 Scribble ControlNet 約束生成結果。
+    </p>
+    <span class="chip">SDXL Flash + xinsir Scribble ControlNet + Manga style</span>
+  </header>
+
+  <main>
+    <section>
+      <h2>✏️ 步驟一：畫草稿</h2>
+      <p class="hint">請用黑線畫人物姿勢、物件輪廓、位置或構圖。簡單火柴人也可以。</p>
+
+      <div class="canvas-wrap">
+        <canvas id="sketchpad" width="512" height="512"></canvas>
+      </div>
+
+      <div class="toolbar">
+        <div class="row">
+          <button id="undoBtn" class="btn" type="button">↶ 復原</button>
+          <button id="clearBtn" class="btn btn-red" type="button">清空</button>
+        </div>
+        <div class="row">
+          <label for="brushSize" style="margin:0">筆刷</label>
+          <input id="brushSize" type="range" min="1" max="24" value="5">
+          <span id="brushValue" class="range-value">5</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>✨ 步驟二：描述並生成</h2>
+
+      <div class="free-note">
+        <strong>這版不用付 API 費。</strong>
+        使用公開 Hugging Face ZeroGPU Space。免費 HF 帳號目前有每日 ZeroGPU 配額；
+        額度用完後等待重置即可。
+      </div>
+
+      <div class="notice">
+        <strong>Token 不會寫進 GitHub，也不會存到 LocalStorage。</strong>
+        只留在目前這個分頁的記憶體裡。重新整理即消失。
+        公開展示時不要把自己的 token 直接寫死在 HTML。
+      </div>
+
+      <div class="field">
+        <label for="hfToken">Hugging Face Token（建議填，可使用免費帳號額度）</label>
+        <input id="hfToken" type="password" autocomplete="off" spellcheck="false"
+               placeholder="hf_xxxxxxxxxxxxxxxxx">
+        <p class="hint" style="margin-top:6px">
+          到
+          <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">
+            Hugging Face → Settings → Access Tokens
+          </a>
+          建立 token。留空也可嘗試匿名呼叫，但額度與排隊優先度較低。
+        </p>
+      </div>
+
+      <div class="field">
+        <label for="promptInput">畫面描述</label>
+        <textarea id="promptInput"
+          placeholder="例如：a young swordsman standing beside a window, school uniform, dramatic manga panel"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="controlStrength">草稿控制強度</label>
+        <div class="range-row">
+          <input id="controlStrength" type="range" min="0.5" max="2.0" step="0.05" value="0.90">
+          <span id="controlValue" class="range-value">0.90</span>
+        </div>
+        <p class="hint" style="margin-top:6px">
+          建議先用 0.8～1.1。越高通常越遵守草稿，但太高可能犧牲自然度。
+        </p>
+      </div>
+
+      <div class="field">
+        <label for="steps">生成步數</label>
+        <div class="range-row">
+          <input id="steps" type="range" min="4" max="20" step="1" value="8">
+          <span id="stepsValue" class="range-value">8</span>
+        </div>
+        <p class="hint" style="margin-top:6px">免費額度有限；先用 8 steps，通常比拉高步數划算。</p>
+      </div>
+
+      <button id="generateBtn" class="generate" type="button">
+        開始生成漫畫 <span id="spinner" class="spinner"></span>
+      </button>
+
+      <div id="statusBox" class="status">
+        尚未生成。建議用相同 prompt、不同草稿各測一次，確認構圖真的會跟著草稿改變。
+      </div>
+
+      <div class="result">
+        <h2>🖼️ AI 完稿結果</h2>
+        <div class="result-frame">
+          <div id="placeholder">生成結果會顯示在這裡</div>
+          <img id="resultImage" alt="AI 生成漫畫">
+        </div>
+        <div class="links">
+          <a id="openResult" class="linkbtn" target="_blank" rel="noopener noreferrer">在新分頁開啟</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    免費後端目前使用 Hugging Face Space
+    <code>linoyts/sketch-to-3d</code> 的 sketch-to-image 階段。
+    它是第三方公開 Space，因此作者若日後停用或改 API，本頁可能需要更新；
+    本頁不設文字生圖 fallback，避免「看似成功但其實沒使用草稿」。
+  </footer>
+</div>
+
+<script type="module">
+  import { Client, handle_file }
+    from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js";
+
+  const SPACE_ID = "linoyts/sketch-to-3d";
+
+  // ---------- Canvas ----------
+  const canvas = document.getElementById("sketchpad");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const brushSize = document.getElementById("brushSize");
+  const brushValue = document.getElementById("brushValue");
+  const undoBtn = document.getElementById("undoBtn");
+  const clearBtn = document.getElementById("clearBtn");
+
+  let drawing = false;
+  let lastPoint = null;
+  const history = [];
+  const MAX_HISTORY = 20;
+
+  function whiteCanvas() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  whiteCanvas();
+
+  function saveHistory() {
+    if (history.length >= MAX_HISTORY) history.shift();
+    history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+  }
+
+  function pos(e) {
+    const r = canvas.getBoundingClientRect();
+    return {
+      x:(e.clientX-r.left)*(canvas.width/r.width),
+      y:(e.clientY-r.top)*(canvas.height/r.height)
+    };
+  }
+
+  canvas.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    saveHistory();
+    drawing = true;
+    lastPoint = pos(e);
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
+  });
+
+  canvas.addEventListener("pointermove", e => {
+    if (!drawing) return;
+    e.preventDefault();
+    const p = pos(e);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = Number(brushSize.value);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(lastPoint.x,lastPoint.y);
+    ctx.lineTo(p.x,p.y);
+    ctx.stroke();
+    lastPoint = p;
+  });
+
+  function stop(e) {
+    drawing = false;
+    lastPoint = null;
+    if (e?.pointerId !== undefined) {
+      try { canvas.releasePointerCapture(e.pointerId); } catch {}
+    }
+  }
+  canvas.addEventListener("pointerup", stop);
+  canvas.addEventListener("pointercancel", stop);
+  canvas.addEventListener("pointerleave", e => { if (e.buttons === 0) stop(e); });
+
+  brushSize.addEventListener("input", () => brushValue.textContent = brushSize.value);
+
+  clearBtn.addEventListener("click", () => {
+    saveHistory();
+    whiteCanvas();
+  });
+
+  undoBtn.addEventListener("click", () => {
+    const prev = history.pop();
+    if (prev) ctx.putImageData(prev,0,0);
+  });
+
+  function isBlank() {
+    const p = ctx.getImageData(0,0,canvas.width,canvas.height).data;
+    for (let i=0;i<p.length;i+=4) {
+      if (p[i] < 235 || p[i+1] < 235 || p[i+2] < 235) return false;
+    }
+    return true;
+  }
+
+  function canvasBlob() {
+    return new Promise((resolve,reject) => {
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Canvas 無法轉成 PNG。")),
+                    "image/png");
+    });
+  }
+
+  // ---------- UI ----------
+  const hfToken = document.getElementById("hfToken");
+  const promptInput = document.getElementById("promptInput");
+  const controlStrength = document.getElementById("controlStrength");
+  const controlValue = document.getElementById("controlValue");
+  const steps = document.getElementById("steps");
+  const stepsValue = document.getElementById("stepsValue");
+  const generateBtn = document.getElementById("generateBtn");
+  const spinner = document.getElementById("spinner");
+  const statusBox = document.getElementById("statusBox");
+  const placeholder = document.getElementById("placeholder");
+  const resultImage = document.getElementById("resultImage");
+  const openResult = document.getElementById("openResult");
+
+  controlStrength.addEventListener("input", () =>
+    controlValue.textContent = Number(controlStrength.value).toFixed(2));
+  steps.addEventListener("input", () => stepsValue.textContent = steps.value);
+
+  function status(text,type="") {
+    statusBox.textContent = text;
+    statusBox.className = "status" + (type ? " " + type : "");
+  }
+
+  function busy(on) {
+    generateBtn.disabled = on;
+    clearBtn.disabled = on;
+    undoBtn.disabled = on;
+    spinner.style.display = on ? "inline-block" : "none";
+  }
+
+  // Gradio endpoint names are normally based on function names.
+  // Still inspect the API so minor suffix changes (e.g. preprocess_image_1)
+  // do not unnecessarily break the page.
+  async function findSketchEndpoint(app) {
+    const info = await app.view_api();
+    const named = info?.named_endpoints || {};
+    const entries = Object.entries(named);
+
+    if (named["/preprocess_image"]) return "/preprocess_image";
+
+    // Prefer any endpoint whose generated API name contains preprocess_image
+    const byName = entries.find(([name]) =>
+      name.toLowerCase().includes("preprocess_image"));
+    if (byName) return byName[0];
+
+    // Last-resort structural match: this Space's sketch endpoint has 7 inputs.
+    const byShape = entries.find(([,meta]) => {
+      const ps = meta?.parameters || [];
+      const labels = ps.map(p => String(p.label || "").toLowerCase()).join(" | ");
+      return ps.length >= 7 &&
+             labels.includes("prompt") &&
+             labels.includes("style") &&
+             labels.includes("guidance");
+    });
+    if (byShape) return byShape[0];
+
+    throw new Error(
+      "找不到公開的 sketch-to-image API endpoint；Space 作者可能剛更新了介面。"
+    );
+  }
+
+  // Recursively collect file/image URLs from Gradio output.
+  function collectUrls(value, out=[]) {
+    if (value == null) return out;
+    if (typeof value === "string") {
+      if (/^https?:\/\//i.test(value)) out.push(value);
+      return out;
+    }
+    if (Array.isArray(value)) {
+      for (const x of value) collectUrls(x,out);
+      return out;
+    }
+    if (typeof value === "object") {
+      // Prefer explicit Gradio FileData URL fields.
+      if (typeof value.url === "string" && /^https?:\/\//i.test(value.url)) {
+        out.push(value.url);
+      }
+      for (const [k,v] of Object.entries(value)) {
+        if (k !== "url") collectUrls(v,out);
+      }
+    }
+    return out;
+  }
+
+  async function generate() {
+    const prompt = promptInput.value.trim();
+    if (!prompt) {
+      alert("請先輸入畫面描述。");
+      promptInput.focus();
+      return;
+    }
+    if (isBlank()) {
+      alert("畫布是空白的，請先畫草稿。");
+      return;
+    }
+
+    busy(true);
+    resultImage.style.display = "none";
+    openResult.style.display = "none";
+    placeholder.style.display = "block";
+    placeholder.textContent = "正在連線免費 ZeroGPU Space…";
+
+    try {
+      const token = hfToken.value.trim();
+
+      status(token
+        ? "正在以你的免費 Hugging Face 帳號連線 ZeroGPU…"
+        : "正在匿名連線 ZeroGPU（匿名額度與優先度較低）…");
+
+      const options = {
+        events:["status","data"]
+      };
+      if (token) options.token = token;
+
+      const app = await Client.connect(SPACE_ID, options);
+      const endpoint = await findSketchEndpoint(app);
+
+      status(`已連線。\n使用 API endpoint：${endpoint}\n正在上傳 Canvas 草稿…`);
+
+      const blob = await canvasBlob();
+      const sketchFile = handle_file(blob);
+
+      // Space 使用 gr.ImageMask / ImageEditor 類型；
+      // 後端實際讀取 image["composite"]。
+      const editorPayload = {
+        background: sketchFile,
+        layers: [],
+        composite: sketchFile
+      };
+
+      const negative =
+        "photorealistic, realistic photo, blurry, low quality, deformed, bad anatomy, extra limbs";
+
+      const payload = [
+        editorPayload,                 // Input sketch
+        prompt,                        // Prompt
+        negative,                      // Negative prompt
+        "Manga",                       // Built-in style
+        Number(steps.value),           // Number of steps
+        5,                             // Guidance scale
+        Number(controlStrength.value)  // ControlNet conditioning scale
+      ];
+
+      const job = app.submit(endpoint, payload);
+      let finalData = null;
+
+      for await (const msg of job) {
+        if (msg.type === "status") {
+          const stage = msg.stage || msg.status || "等待中";
+          let extra = "";
+          if (Number.isFinite(msg.position)) extra += `\n排隊位置：${msg.position}`;
+          if (Number.isFinite(msg.eta)) extra += `\n預估等待：${Math.ceil(msg.eta)} 秒`;
+          status(`ZeroGPU 狀態：${stage}${extra}\n請不要關閉這個分頁。`);
+
+          if (stage === "error" || msg.success === false) {
+            throw new Error(msg.message || "ZeroGPU 任務失敗。");
+          }
+        }
+
+        if (msg.type === "data") {
+          finalData = msg.data;
+        }
+      }
+
+      if (!finalData) {
+        throw new Error("Space 沒有回傳生成結果。");
+      }
+
+      // preprocess_image 回傳 ImageSlider 的 (control image, generated image)。
+      // 通常第二張是生成結果，所以取最後一個可用 image URL。
+      const urls = collectUrls(finalData);
+      if (!urls.length) {
+        console.log("Raw Gradio result:", finalData);
+        throw new Error("任務完成，但無法從 Gradio 回傳資料找到圖片 URL。請開 F12 Console 查看 Raw Gradio result。");
+      }
+
+      const generatedUrl = urls[urls.length - 1];
+
+      resultImage.onload = () => {
+        placeholder.style.display = "none";
+        resultImage.style.display = "block";
+      };
+      resultImage.onerror = () => {
+        status("生成完成，但瀏覽器無法直接載入結果圖。可使用下方連結開啟。","error");
+      };
+
+      resultImage.src = generatedUrl;
+      openResult.href = generatedUrl;
+      openResult.style.display = "inline-block";
+
+      status(
+        "✅ 生成完成。\n這次使用的是 Scribble ControlNet，沒有 fallback 成普通文字生圖。",
+        "ok"
+      );
+
+    } catch (err) {
+      console.error(err);
+      let message = err?.message || String(err);
+
+      if (/quota|GPU task/i.test(message)) {
+        message += "\n\n可能是今天的免費 ZeroGPU 額度已用完；等配額重置後再試。";
+      }
+      if (/401|unauthorized|token/i.test(message)) {
+        message += "\n\n請確認 Hugging Face token 完整且仍有效。";
+      }
+      if (/Failed to fetch|network/i.test(message)) {
+        message += "\n\n可能是 Space 暫時休眠、排隊服務異常，或網路阻擋 hf.space。稍後重試即可。";
+      }
+
+      status("❌ 生成失敗：\n" + message,"error");
+      placeholder.textContent = "生成失敗，請看上方錯誤訊息。";
+      placeholder.style.display = "block";
+    } finally {
+      busy(false);
+    }
+  }
+
+  generateBtn.addEventListener("click", generate);
+</script>
+</body>
+</html>
